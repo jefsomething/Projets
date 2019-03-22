@@ -1,0 +1,311 @@
+/*=============================================================================================
+ question 1
+ 
+ Code et dénomination de valeurs du secteur Pharmacie rentrant dans le calcul de 
+	l'ind. CAC40
+
+ -------------------------------- analyse de la requête -------------------------------------
+ Ces valeurs sont dans la table Valeur, on recherche les résultats dans la table Secteur dont
+ le champ LibSecteur peut prendre la valeur 'Pharmacie'.
+
+ On fait une restriction sur la table 'Valeur' en lui appliquant un IN pour récupérer toutes
+ lignes dont le champ 'CodeSecteur' est commun à Secteur.LibSecteur et
+ sur lequel porte la restriction LibSecteur = 'Pharmacie'  
+ 
+ requete en Algebre Relationnel (AR)
+    -----------------------------------
+    R1 = SEL( Secteur / Libsecteur='Pharmacie' )
+    R2 = PJ( R1, (CodeSecteur) )
+    RES = SEL( Valeur / CodeSecteur = R2 )
+ 
+ */
+
+
+SELECT *
+FROM Valeur
+WHERE CodeSecteur IN ( 	SELECT CodeSecteur
+			FROM  Secteur
+			WHERE LibSecteur = 'Pharmacie' );
+
+
+/*==============================================================================================
+ question 2:
+ 
+ Code et dénomination de valeurs détenues dans des comptes ouverts depuis 2011-01-01 :
+
+  ------------------------------- analyse de la requête ---------------------------------------
+ Dans cet exercice et le précédent on fait une restriction, récupère les champs souhaité entre 
+ deux requête imbriquées à travers un IN.
+ Jointure sur Compte et Portefeuille, une restriction  'depuis', soit: ">= une date",
+ on récupère le CodeValeur de cette requete et l'envoit à travers un IN à une requête parente
+ sur la table Valeur: 
+ 
+    R1 = JN( Compte, Portefeuille / NumCompte=NumCompte )
+    R2 = SEL( R1 / Compte.DateOuverture >= '2011-01-01' )
+    R3 = PJ( R1, CodeValeur)
+    RES = PJ( SEL( R3 / CodeValeur=CodeValeur ), (CodeValeur, Denomination) )
+ 
+ */
+
+SELECT CodeValeur, Denomination
+FROM Valeur
+WHERE CodeValeur IN ( 	SELECT CodeValeur
+			FROM Compte, Portefeuille
+			WHERE Compte.NumCompte = Portefeuille.NumCompte
+			AND Compte.DateOuverture >= '2011-01-01' );
+
+
+
+/* ==========================================================================================
+ question 3:
+ 
+ Nom et ville des clients possédant sur un de leurs comptes la valeur RENAULT
+
+  ------------------------------- analyse de la requête -------------------------------------
+ nom et ville se situent dans la table Client, mais l'information recherchee est dans la table 
+ Portefeuille; 
+ on veut donc faire une restriction sur une jointure (PorteFeuille,Valeur), où Denomination a
+ la valeur 'RENAULT' et remonter cette valeur a une requete en amont avec un IN et enfin 
+ recuperer NomClient et Ville du resultat precedant : 
+
+ SELECT valeur1,valeur2
+ ... 
+ WHERE 'NumCompte' IN (SELECT 'NumCompte' ... : */
+
+
+SELECT NomClient, Ville
+FROM Client, Compte
+WHERE Client.NumClient = Compte.NumClient
+AND NumCompte IN ( 	SELECT NumCompte
+			FROM Valeur, Portefeuille
+			WHERE Denomination = 'RENAULT'
+			AND Valeur.CodeValeur = Portefeuille.CodeValeur );
+
+
+
+/*-- =======================================================================================
+ question 4
+ 
+ Nom et ville des clients possédant des valeurs du secteur Energies rentrant dans 
+ l'indice SBF120
+
+  --------------------------------- analyse de la requête ---------------------------------
+ Cette requête peut consister à lier les 5 tables requises, et opérer deux restrictions:
+ Valeurs.Indice = 'SBF120' d'une part, et Secteur.LibSecteur = 'Energies' : */
+
+SELECT NomClient, Ville
+FROM Compte, Client, Secteur, Valeur, Portefeuille
+WHERE Secteur.LibSecteur = 'Energies' AND Secteur.CodeSecteur = Valeur.CodeSecteur
+AND Valeur.CodeValeur = Portefeuille.CodeValeur
+AND Portefeuille.NumCompte = Compte.NumCompte
+AND Compte.NumClient = Client.NumClient
+AND Valeurs.Indice = 'SBF120';
+
+
+
+/* ========================================================================================
+   question 5: 
+
+   Nom et ville des clients ne possédant pas de portefeuille de valeurs
+
+  ------------------------------- analyse de la requête -----------------------------------
+  Les numeros de clients étant présents dans Portefeuille et Compte, on recherche ces
+  numeros communs, puis avec un NOT IN on retrouve les donnees des clients qui ont un compte
+  ET qui NE font PAS parti d'une sous requete retournant les NumClient avec au minimum UN 
+  CodeValeur dans Portefeuille: 
+  
+  SELECT Nom et Ville de NumClient  NOT IN 
+  (
+    NumClient qui possedent au moins un CodeValeur en Portefeuille
+  )
+    
+    R1 = JN(Compte, Portefeuille / NumCompte=NumCompte)
+    R2 = PJ(R1, (NumClient, COUNT(CodeValeur) alias 'n' ) )
+    R3 = SEL( R2 / n=0)
+    SEL( R3, (NomCLient, Ville) )
+  
+   */
+
+SELECT NomClient, Ville FROM Client WHERE NumClient NOT IN
+(
+    SELECT NumClient FROM 
+        (SELECT Compte.NumClient, COUNT(CodeValeur)  n  
+        FROM Compte LEFT JOIN Portefeuille ON Compte.NumCompte=Portefeuille.NumCompte  
+        GROUP BY Compte.NumCompte ) R
+    WHERE n>=1
+);
+
+
+/* =====================================================================================
+   06/11
+   a) pour chaque compte, donner le montant total du portefeuille :
+
+ 	1. pour chaque ligne de la table Portefeuille, créer une sous requête R1 indiquant
+	le produit (Qte*PAM), nommé ici "TotalPorteF" */
+
+SELECT NumCompte, SUM(TotalPorteF)
+FROM ( SELECT NumCompte, CodeValeur, Quantite, PAM, Quantite*PAM TotalPorteF FROM Portefeuille ) R1
+GROUP BY NumCompte;
+
+
+
+
+/* ================================================================================================
+    7. Pour chaque compte, donner le solde et le montant total du portefeuille
+    
+    --------------------------------- analyse de la requête -----------------------------------
+    on joint (Compte,Portefeuille) avec ici un LEFT JOIN sur NumCompte, indiquant ainsi TOUS 
+    les comptes clients à gauche et la somme des portefeuilles regroupé par NumClient droite;
+    Il faut ensuite remplacer les éventuels 'NULL' par 0 avec COALESCE   */
+
+SELECT NumCompte, Solde 'Solde total client', COALESCE(NULL, SUM(pf), 0) 'Montant total portefeuille client' 
+FROM (
+    SELECT c.NumCompte, CodeValeur, Quantite, PAM, Solde, Quantite*PAM pf
+    FROM Compte c LEFT JOIN Portefeuille p ON p.NumCompte=c.NumCompte
+    ) R1
+GROUP BY NumCompte;
+
+
+
+
+
+/* ================================================================================================
+   8 Nom des clients possédant un compte dont le solde est inférieur ou égal à 1000€ et possédant
+ un portefeuille de valeurs sur ce compte d'une valeur supérieure à 1000€
+
+  --------------------------------- analyse de la requête -------------------------------
+
+ il s'agit de lier le(s) client(s) communs à deux requêtes différentes:
+	- (1) on recherche un client dont le solde est <= à X,
+	- (2) on recherche un client dont Portefeuille >= X 
+
+ on souhaite obtenir uniquement les clients communs à ces deux requêtes (1) et (2)
+ deux démarches sont proposées pour lier ces resultats:
+
+ solution #1: INNER JOIN 
+ lier les resultats de ces deux requêtes avec un JOIN pour retourner uniquement les clients communs */
+
+SELECT *
+FROM 	(SELECT NomClient FROM Client WHERE NumClient IN
+		(SELECT NumClient FROM Compte WHERE Solde <= 1000 )
+	) R1
+INNER JOIN (SELECT NomClient FROM Client WHERE NumClient IN
+		(SELECT NumClient FROM Compte WHERE NumCompte IN
+			(SELECT NumCompte FROM (SELECT NumCompte, SUM(Quantite*PAM) Res 
+			FROM Portefeuille GROUP BY NumCompte) R
+			WHERE Res >= 1000
+			)
+		)
+	   ) R2
+ON R1.NomClient = R2.NomClient;
+
+/*  solution #2: IN
+    imbriquer les deux requêtes avec un IN de manière semblables aux questions 1 et 2 */
+
+SELECT NomClient FROM Client WHERE NumClient IN
+                (SELECT NumClient FROM Compte WHERE Solde <= 1000 )
+AND NomCLient IN
+ (SELECT NomClient FROM Client WHERE NumClient IN
+                (SELECT NumClient FROM Compte WHERE NumCompte IN
+                        (SELECT NumCompte FROM (SELECT NumCompte, SUM(Quantite*PAM) Res 
+                        FROM Portefeuille GROUP BY NumCompte) R
+                        WHERE Res >= 1000
+                        )
+                ))
+;
+
+
+
+/* =====================================================================================
+ 9. Nom et ville des clients qui détiennent dans le portefeuille au moins 2 valeurs différentes.
+
+  ------------------------------- analyse de la requête -------------------------------
+
+ On recherche tous clients avec au moins deux valeurs différentes dans le portefeuille,
+ il faut donc 
+ 	regrouper (GROUP BY) CodeValeurs par titulaires, champ NumCompte,
+ 	retenir uniquement les résultats ( WHERE ... >= X) qui comptent au minimum 2 lignes ( COUNT():
+ 	
+ SELECT * FROM (SELECT *, COUNT(NumCompte) nValeurs FROM Portefeuille GROUP BY NumCompte) R WHERE nValeurs >=2
+
+ Plusieurs IN imbriqués :
+ on cherche nom et ville dans Client 
+	dont NumClient In ( tous NumClient de Compte 
+		où NumCompte IN (tous NumCompte avec au moins 2 valeurs differentes dans Portefeuille) */
+
+
+SELECT NomClient, Ville FROM Client
+WHERE NumClient IN
+	(SELECT NumClient FROM Compte WHERE NumCompte IN
+		(SELECT NumCompte FROM (SELECT NumCompte, COUNT(CodeValeur) C 
+		FROM Portefeuille GROUP BY NumCompte ) R1 WHERE C >=2)
+	);
+
+
+
+/* ==============================================================================
+ 10. Pour chaque compte: répartition par secteur économique du portefeuille,
+ par ordre croissant de répartition
+
+  --------------------------------- analyse de la requête -------------------------------
+
+ On veut trier (GROUP BY) le portefeuille par secteur économique ( Valeur.CodeValeur ), soit:
+	1) lier les tables Valeur, Portefeuille et Secteur.
+		(ici, JOIN pour éviter les doublons, on conserve les champs NumCompte et LibSecteur
+ 	2) regrouper les lignes par secteur économique (CodeSecteur),
+    3) grouper les tables par compte et secteur, faire un COUNT(valeurs) par clients, secteur
+    4) trier avec ORDER BY les comptes et le nombre de valeurs liees. */
+ 
+
+SELECT p.NumCompte, LibSecteur 'secteur economique', p.CodeValeur, COUNT(p.CodeValeur) 'Nb valeurs'
+          FROM Secteur s
+          JOIN Valeur v ON s.CodeSecteur = v.CodeSecteur
+          JOIN Portefeuille p ON p.CodeValeur = v.CodeValeur
+          GROUP BY p.NumCompte, LibSecteur
+          ORDER BY NumCompte, 'Nb valeurs' DESC
+          ;
+
+/* =============================================================================
+11. Nom, ville et NumCompte des clients qui ne possèdent que des valeurs du secteur 'Energies'
+
+  --------------------------------- analyse de la requête -------------------------------
+   la difficulte de cette requete est de rechercher des clients qui possedent uniquement
+   des valeurs de la categorie Energie;
+   On peut donc considerer cette requete comme le cumul de : 
+    1) tous clients possedant ces valeurs
+    ET A LA FOIS
+    2) tous clients qui n'ont pas de valeurs autres que cette meme categorie de valeurs. 
+        
+    Dans l'exemple du sujet fourni, le client Trader est ainsi la seule reponse possible:
+    il lui reste en portefeuille 100 Valeurs du secteur Energies, alors
+    que Prudent possede des valeurs Energies ET Automobile.
+    
+    on cherche donc tous clients
+    ...
+    WHERE X IN   (SELECT X ... <propriete> = <valeurs> )
+    AND X NOT IN (SELECT X ... <propriete> != <valeurs>)
+    
+    */
+
+
+SELECT NumCompte, NomCLient, Ville 
+FROM Client JOIN Compte ON Client.NumClient=Compte.NumClient 
+WHERE Compte.NumCompte 
+IN( SELECT p.NumCompte 
+    FROM Portefeuille p 
+    JOIN Valeur v ON p.CodeValeur=v.CodeValeur 
+    JOIN Secteur s ON v.CodeSecteur = s.CodeSecteur 
+    WHERE LibSecteur='Energies'
+    GROUP BY p.NumCompte
+    )
+    
+AND Compte.NumCompte NOT IN
+    (SELECT p.NumCompte
+    FROM Portefeuille p 
+    JOIN Valeur v ON p.CodeValeur=v.CodeValeur 
+    JOIN Secteur s ON v.CodeSecteur = s.CodeSecteur 
+    WHERE LibSecteur!='Energies'
+    GROUP BY p.NumCompte
+    )
+;
+
