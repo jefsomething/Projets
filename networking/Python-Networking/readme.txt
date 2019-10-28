@@ -12,7 +12,7 @@ order to send those configs.
 
 # Requirements :
 
-Devices IPs' are are listed as list of dictionaries
+Devices IPs' are listed as list of dictionaries
 in yml/devices.yml. 
 Also, a Jinja template file is placed in jinja/<myfile>.j2, 
 ( here set_touter_ip_interfaces.j2 ).
