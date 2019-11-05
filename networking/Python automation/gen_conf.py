@@ -19,28 +19,35 @@ def get_devices():
 
 def ask_for_config():
     print("\nTo create a template config, enter a device:")
-    available_dev_list = get_devices()
-    for d in available_dev_list:
+    get_devices()
+    for d in get_devices():
         print(d)
-    print("\nYour choice:")
-    try:
+
+    device = input("\nYour choice:\n")
+    while device not in get_devices():
+        print("[error] Not a device.\nEnter a valid one:\n")
         device = input()
-        while device not in available_dev_list:
-            print("[error] Not a device.\nEnter a valid one:\n")
-            device = input()
-    except:
-        print("[error] not a valid value.\n")
 
-    interface_list = get_interface_list_of_device(device)
+    get_interface_list_from(device)
     gen(device)
-    get_data_of_device(device)
+    get_data_of(device)
 
 
-def get_data_of_device(device):
+def get_data_of(device):
     for d in devices:
         for k, v in d.items():
             if device in k:
                 return v
+
+
+def get_interface_list_from(device):
+    interface_list = []
+    for d in devices:
+        for k, v in d.items():
+            if k == device:
+                for subK in v.keys():
+                    interface_list.append(subK)
+    return interface_list
 
 
 def get_ip(device, interface):
@@ -52,26 +59,25 @@ def get_ip(device, interface):
                         return subV
 
 
-def get_interface_list_of_device(device):
-    interface_list = []
-    for d in devices:
-        for k, v in d.items():
-            if k == device:
-                for subK in v.keys():
-                    interface_list.append(subK)
-    return interface_list
-
-
 def gen(d):
     env = Environment(loader=FileSystemLoader('../jinja/'))
     template = env.get_template('set_router_ip_interfaces.j2')
-    interface_list = get_interface_list_of_device(d)
-    print(interface_list)
+    print(get_interface_list_from(d))
     print("\n")
-    for i in interface_list:
+    for i in get_interface_list_from(d):
         res = template.render(interface=i, ip=get_ip(d, i))
         print(res)
         print("!")
+
+    print("\nIs that config ok? (y/n)")
+    answer = input()
+    if answer == "y":
+        commands_file = "../templates/" + d + "_commands.txt"
+        with open(commands_file, "w") as f:
+            for i in get_interface_list_from(d):
+                f.write(str(template.render(interface=i, ip=get_ip(d, i))))
+                f.write("\n!\n")
+        print("Config saved in {}".format(commands_file))
 
 
 #
